@@ -66,9 +66,10 @@ jobs:
           mkdir -p artifacts
           cp ../target/${{ matrix.target }}/release/senra_server artifacts/senra_server-${{ matrix.target }}
           zip -j artifacts/senra_server-${{ matrix.target }}.zip artifacts/senra_server-${{ matrix.target }}
+          sha256sum artifacts/senra_server-${{ matrix.target }}.zip > artifacts/senra_server-${{ matrix.target }}.zip.sha256
         working-directory: senra_server
 
-      - name: Upload artifact
+      - name: Upload artifacts
         uses: actions/github-script@v6
         env:
           release_id: ${{ needs.create-release.outputs.release_id }}
@@ -76,25 +77,40 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const assetPath = `senra_server/artifacts/senra_server-${process.env.target}.zip`;
-            const assetName = `senra_server-${process.env.target}.zip`;
-            const assetContentType = 'application/zip';
+            const path = require('path');
 
-            const { data } = await github.rest.repos.getRelease({
+            const artifacts = [
+              {
+                path: `senra_server/artifacts/senra_server-${process.env.target}.zip`,
+                name: `senra_server-${process.env.target}.zip`,
+                type: 'application/zip'
+              },
+              {
+                path: `senra_server/artifacts/senra_server-${process.env.target}.zip.sha256`,
+                name: `senra_server-${process.env.target}.zip.sha256`,
+                type: 'text/plain'
+              }
+            ];
+
+            const { data: release } = await github.rest.repos.getRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               release_id: process.env.release_id
             });
-            const assetData = fs.readFileSync(assetPath);
-            await github.rest.repos.uploadReleaseAsset({
-              url: data.upload_url,
-              headers: {
-                'content-type': assetContentType,
-                'content-length': assetData.length
-              },
-              name: assetName,
-              data: assetData
-            });
+
+            for (const artifact of artifacts) {
+              console.log(`Uploading ${artifact.name}...`);
+              const assetData = fs.readFileSync(artifact.path);
+              await github.rest.repos.uploadReleaseAsset({
+                url: release.upload_url,
+                headers: {
+                  'content-type': artifact.type,
+                  'content-length': assetData.length
+                },
+                name: artifact.name,
+                data: assetData
+              });
+            }
 
   release-app:
     permissions:
